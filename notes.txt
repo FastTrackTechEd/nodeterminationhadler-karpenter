@@ -1,0 +1,76 @@
+https://github.com/aws/aws-node-termination-handler
+
+1. Create an SQS Queue:
+      ## Queue Policy
+      QUEUE_POLICY=$(cat <<EOF
+      {
+          "Version": "2012-10-17",
+          "Id": "MyQueuePolicy",
+          "Statement": [{
+              "Effect": "Allow",
+              "Principal": {
+                  "Service": ["events.amazonaws.com", "sqs.amazonaws.com"]
+              },
+              "Action": "sqs:SendMessage",
+              "Resource": [
+                  "arn:aws:sqs:${AWS_REGION}:${ACCOUNT_ID}:${SQS_QUEUE_NAME}"
+              ]
+          }]
+      }
+      EOF
+      )
+      
+      ## make sure the queue policy is valid JSON
+      echo "$QUEUE_POLICY" | jq .
+      
+      ## Save queue attributes to a temp file
+      cat << EOF > /tmp/queue-attributes.json
+      {
+        "MessageRetentionPeriod": "300",
+        "Policy": "$(echo $QUEUE_POLICY | sed 's/\"/\\"/g' | tr -d -s '\n' " ")",
+        "SqsManagedSseEnabled": "true"
+      }
+      EOF
+      
+      aws sqs create-queue --queue-name "${SQS_QUEUE_NAME}" --attributes file:///tmp/queue-attributes.json
+2. Create Policy - aws-node-termination-handler
+    {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": [
+                    "autoscaling:CompleteLifecycleAction",
+                    "autoscaling:DescribeAutoScalingInstances",
+                    "autoscaling:DescribeTags",
+                    "ec2:DescribeInstances",
+                    "sqs:DeleteMessage",
+                    "sqs:ReceiveMessage"
+                ],
+                "Resource": "*"
+            }
+        ]
+    }
+3. Attach the policy to the EKS instances role
+4. Create event bridge
+  Event Pattern:
+    {
+      "source": ["aws.ec2"],
+      "detail-type": ["EC2 Spot Instance Interruption Warning", "EC2 Instance Rebalance Recommendation", "EC2 Instance State-change Notification"]
+    }
+  Targets: SQS Queue
+5. Install the node termination handler
+
+aws ecr-public get-login-password \
+     --region us-east-1 | helm registry login \
+     --username AWS \
+     --password-stdin public.ecr.aws
+
+
+helm upgrade --install aws-node-termination-handler \
+  --namespace kube-system \
+  --set enableSqsTerminationDraining=true \
+  --set queueURL=https://sqs.us-east-1.amazonaws.com/123450170071/PPEKS01_NodeTerminationHadlerEventQueue \
+  oci://public.ecr.aws/aws-ec2/helm/aws-node-termination-handler --version 0.23.0
+  
+  
