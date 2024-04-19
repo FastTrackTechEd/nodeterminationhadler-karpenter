@@ -72,5 +72,8 @@ helm upgrade --install aws-node-termination-handler \
   --set enableSqsTerminationDraining=true \
   --set queueURL=https://sqs.us-east-1.amazonaws.com/123450170071/PPEKS01_NodeTerminationHadlerEventQueue \
   oci://public.ecr.aws/aws-ec2/helm/aws-node-termination-handler --version 0.23.0
-  
+
+
+6. Check the status of the pod
+      kubectl get po -n kube-system
   
